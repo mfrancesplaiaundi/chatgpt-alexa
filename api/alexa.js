@@ -5,30 +5,34 @@ const client = new OpenAI({
 });
 
 export default async function handler(req, res) {
-  // Alexa envía el evento en formato JSON
-  const body = req.body;
+  try {
+    // Aseguramos que el body se lea correctamente
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const rawBody = Buffer.concat(chunks).toString();
+    const body = JSON.parse(rawBody || "{}");
 
-  // Manejo del tipo de solicitud (LaunchRequest, IntentRequest, etc.)
-  if (body.request?.type === "LaunchRequest") {
-    return res.json({
-      version: "1.0",
-      response: {
-        outputSpeech: {
-          type: "PlainText",
-          text: "Hola, soy tu asistente con ChatGPT. ¿Qué quieres preguntarme?",
+    console.log("Body recibido de Alexa:", body);
+
+    if (body.request?.type === "LaunchRequest") {
+      return res.status(200).json({
+        version: "1.0",
+        response: {
+          outputSpeech: {
+            type: "PlainText",
+            text: "Hola, soy tu asistente con ChatGPT. ¿Qué quieres preguntarme?",
+          },
+          shouldEndSession: false,
         },
-        shouldEndSession: false,
-      },
-    });
-  }
+      });
+    }
 
-  if (body.request?.type === "IntentRequest") {
-    const userInput =
-      body.request.intent?.slots?.consulta?.value ||
-      body.request.intent?.name ||
-      "No entendí tu pregunta";
+    if (body.request?.type === "IntentRequest") {
+      const userInput =
+        body.request.intent?.slots?.consulta?.value ||
+        body.request.intent?.name ||
+        "No entendí tu pregunta";
 
-    try {
       const completion = await client.chat.completions.create({
         model: "gpt-4-turbo",
         messages: [
@@ -39,7 +43,7 @@ export default async function handler(req, res) {
 
       const respuesta = completion.choices[0].message.content;
 
-      return res.json({
+      return res.status(200).json({
         version: "1.0",
         response: {
           outputSpeech: {
@@ -49,30 +53,30 @@ export default async function handler(req, res) {
           shouldEndSession: false,
         },
       });
-    } catch (err) {
-      console.error(err);
-      return res.json({
-        version: "1.0",
-        response: {
-          outputSpeech: {
-            type: "PlainText",
-            text: "Ha ocurrido un error al conectar con ChatGPT.",
-          },
-          shouldEndSession: true,
-        },
-      });
     }
-  }
 
-  // Cierre de sesión
-  return res.json({
-    version: "1.0",
-    response: {
-      outputSpeech: {
-        type: "PlainText",
-        text: "Adiós.",
+    // Si no coincide ningún tipo de request
+    return res.status(200).json({
+      version: "1.0",
+      response: {
+        outputSpeech: {
+          type: "PlainText",
+          text: "Adiós.",
+        },
+        shouldEndSession: true,
       },
-      shouldEndSession: true,
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Error en handler:", err);
+    return res.status(500).json({
+      version: "1.0",
+      response: {
+        outputSpeech: {
+          type: "PlainText",
+          text: "Ha ocurrido un error interno en el servidor.",
+        },
+        shouldEndSession: true,
+      },
+    });
+  }
 }
